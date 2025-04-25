@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import feedparser
 import os
+import requests
 from flask import Flask
 from threading import Thread
 from waitress import serve
@@ -78,11 +79,16 @@ async def test(ctx):
     await ctx.send("⚠️ This command is disabled")  # Immediate response
 
 @bot.event
-async def on_ready():
+async def on_ready(): keepalive.start()
     print(f"🚀 Bot ready as {bot.user}")
     check_deals.start()  # Start the 30-minute timer
 
 # ========= KEEP-ALIVE SERVER =========
+@tasks.loop(minutes=4)
+async def keepalive():
+    requests.get("https://couponbot1-1.onrender.com")
+
+
 app = Flask('')
 @app.route('/')
 def home():
