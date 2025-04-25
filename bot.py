@@ -74,14 +74,8 @@ async def check_deals():
 # ========= DISCORD COMMANDS =========
 @bot.command()
 async def test(ctx):
-    """Force-check deals manually"""
-    try:
-        await ctx.send("🔄 Checking for deals...")
-        await check_deals()  # Calls your existing deal-checking function
-        await ctx.send("✅ Manual check completed!")
-    except Exception as e:
-        await ctx.send(f"❌ Error: {str(e)}")
-        print(f"Test command failed: {e}")
+    """Debug command"""
+    await ctx.send("⚠️ This command is disabled")  # Immediate response
 
 @bot.event
 async def on_ready():
