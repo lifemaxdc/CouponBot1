@@ -1,4 +1,5 @@
-discord.py
-feedparser
-flask
-waitress==3.0.1
+requests==2.31.0
+discord.py==2.3.2
+feedparser==6.0.10
+flask==3.0.0
+waitress==3.1.0
