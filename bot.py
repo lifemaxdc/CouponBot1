@@ -1,108 +1,93 @@
 import discord
 from discord.ext import commands, tasks
 import feedparser
-import re
 import os
 from flask import Flask
 from threading import Thread
 from waitress import serve
 
-# Config
-TOKEN = os.environ['DISCORD_TOKEN']  # From Replit Secrets
-CHANNEL_ID = 1360707075818127471
+# Config - Don't change these
+TOKEN = os.environ['DISCORD_TOKEN']  # Get from Render secrets
+CHANNEL_ID = 1360707075818127471     # Your channel ID
 RSS_URL = "https://www.slickdeals.net/newsearch.php?mode=frontpage&searcharea=deals&searchin=first&rss=1"
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
-posted_deals = set()
+posted_deals = set()  # Tracks posted deals to avoid duplicates
 
+# ========= IMAGE EXTRACTION =========
 def extract_image_url(entry):
-      if hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
-        return entry.media_thumbnail[0]['url']    
-
-    """Extract image URL using multiple methods"""
-    # 1. Check RSS enclosure links (original working method)
+    """Simplified image finder - checks 3 places for images"""
+    # 1. Check for direct image links (most reliable)
     if hasattr(entry, 'links'):
         for link in entry.links:
             if link.rel == 'enclosure' and 'image' in link.type:
                 return link.href
     
-    # 2. Parse from description HTML (newer method)
+    # 2. Check description HTML (common for Slickdeals)
     if 'description' in entry:
-        img_match = re.search(r'<img[^>]+src="([^"]+)"', entry.description)
-        if img_match:
-            return img_match.group(1)
+        if 'img src="' in entry.description:
+            start = entry.description.find('img src="') + 9
+            end = entry.description.find('"', start)
+            return entry.description[start:end]
     
-    # 3. Check media content (fallback)
+    # 3. Check media attachments (fallback)
     if hasattr(entry, 'media_content'):
         for media in entry.media_content:
-            if media.get('medium') == 'image':
+            if 'image' in media.get('medium', ''):
                 return media['url']
     
-    return None
+    return None  # No image found
 
+# ========= MESSAGE FORMATTING =========
 def format_deal(entry):
-    """Create beautiful embed with image"""
+    """Creates pretty Discord messages with images"""
     embed = discord.Embed(
-        title=f"🛒 {entry.title[:200]}" if len(entry.title) > 200 else f"🛒 {entry.title}",
+        title=f"🛒 {entry.title[:200]}",  # Shortens long titles
         url=entry.link,
-        color=0xFF6B00  # Slickdeals orange
+        color=0xFF6B00  # Orange color
     )
     
-    # Add image if available
-    image_url = extract_image_url(entry)
-    if image_url:
-        embed.set_image(url=image_url)
+    if img_url := extract_image_url(entry):  # Walrus operator (Python 3.8+)
+        embed.set_image(url=img_url)
     
     embed.set_footer(text="🔔 New Deal Alert")
     return embed
 
+# ========= MAIN DEAL CHECKER =========
 @tasks.loop(minutes=30)
 async def check_deals():
     try:
         channel = bot.get_channel(CHANNEL_ID)
         if not channel:
-            print("❌ Channel not found! Check CHANNEL_ID")
-            return
+            return  # Silently skip if channel is wrong
             
         feed = feedparser.parse(RSS_URL)
         
-        if not feed.entries:
-            print("⚠️ No deals found in RSS feed")
-            return
-            
-        new_deals = 0
-        for entry in feed.entries[:5]:  # Process 5 newest deals
+        for entry in feed.entries[:5]:  # Only check 5 newest deals
             if entry.link not in posted_deals:
-                try:
-                    await channel.send(embed=format_deal(entry))
-                    posted_deals.add(entry.link)
-                    new_deals += 1
-                    print(f"✅ Posted: {entry.title[:50]}...")
-                except Exception as e:
-                    print(f"❌ Failed to post deal: {e}")
-                    
-        print(f"📊 Found {len(feed.entries)} deals | Posted {new_deals} new")
-        
+                await channel.send(embed=format_deal(entry))
+                posted_deals.add(entry.link)
+                
     except Exception as e:
-        print(f"⚠️ RSS check failed: {e}")
+        print(f"⚠️ Error (will retry): {e}")
 
+# ========= DISCORD COMMANDS =========
 @bot.command()
 async def test(ctx):
-    """Manual trigger for testing"""
+    """Test command - type !test in Discord"""
     await check_deals()
     await ctx.send("✅ Manual check complete!")
 
 @bot.event
 async def on_ready():
     print(f"🚀 Bot ready as {bot.user}")
-    check_deals.start()
+    check_deals.start()  # Start the 30-minute timer
 
+# ========= KEEP-ALIVE SERVER =========
 app = Flask('')
 @app.route('/')
 def home():
     return "Bot is alive!"
-keep_alive = Thread(target=lambda: serve(app, host='0.0.0.0', port=8080))
-keep_alive.start()
 
+Thread(target=lambda: serve(app, host='0.0.0.0', port=8080)).start()
 bot.run(TOKEN)
-
