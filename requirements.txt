@@ -1,3 +1,4 @@
 discord.py
 feedparser
 flask
+waitress==3.0.1
