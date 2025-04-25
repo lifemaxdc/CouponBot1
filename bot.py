@@ -79,15 +79,18 @@ async def test(ctx):
     await ctx.send("⚠️ This command is disabled")  # Immediate response
 
 @bot.event
-async def on_ready(): keepalive.start()
+async def on_ready():
+    keepalive.start()  # Fixed indentation
     print(f"🚀 Bot ready as {bot.user}")
     check_deals.start()  # Start the 30-minute timer
 
 # ========= KEEP-ALIVE SERVER =========
 @tasks.loop(minutes=4)
 async def keepalive():
-    requests.get("https://couponbot1-1.onrender.com")
-
+    try:
+        requests.get("https://couponbot1-1.onrender.com")
+    except:
+        pass
 
 app = Flask('')
 @app.route('/')
