@@ -2,4 +2,4 @@ requests==2.31.0
 discord.py==2.3.2
 feedparser==6.0.10
 flask==3.0.0
-waitress==3.1.0
+waitress==3.0.1  # Changed from 3.1.0 to latest stable version
