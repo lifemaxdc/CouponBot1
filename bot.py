@@ -16,6 +16,9 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 posted_deals = set()
 
 def extract_image_url(entry):
+      if hasattr(entry, 'media_thumbnail') and entry.media_thumbnail:
+        return entry.media_thumbnail[0]['url']    
+
     """Extract image URL using multiple methods"""
     # 1. Check RSS enclosure links (original working method)
     if hasattr(entry, 'links'):
