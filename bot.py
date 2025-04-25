@@ -5,6 +5,7 @@ import re
 import os
 from flask import Flask
 from threading import Thread
+from waitress import serve
 
 # Config
 TOKEN = os.environ['DISCORD_TOKEN']  # From Replit Secrets
@@ -97,7 +98,7 @@ app = Flask('')
 @app.route('/')
 def home():
     return "Bot is alive!"
-keep_alive = Thread(target=app.run, kwargs={'host':'0.0.0.0','port':8080})
+keep_alive = Thread(target=lambda: serve(app, host='0.0.0.0', port=8080))
 keep_alive.start()
 
 bot.run(TOKEN)
