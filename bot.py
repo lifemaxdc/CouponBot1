@@ -7,82 +7,47 @@ from flask import Flask
 from threading import Thread
 from waitress import serve
 
+# Config - Replace these with your values
+TOKEN = os.environ['DISCORD_TOKEN']
+SLICKDEALS_CHANNEL_ID = 1360707075818127471  # Your main deals channel
+REDDIT_CHANNEL_ID = 112233445566778899      # Channel for freebies
+REDDIT_ROLE_ID = 1102467235190153248        # Role to ping for freebies
 
-REDDIT_RSS_URL = "https://www.reddit.com/r/Freebies/new/.rss"
-ROLE_ID = "1102467235190153248"  # Replace with the role ID to ping (e.g., "123456789")
-
-# Config - Don't change these
-TOKEN = os.environ['DISCORD_TOKEN']  # Get from Render secrets
-CHANNEL_ID = 1360707075818127471     # Your channel ID
-RSS_URL = "https://www.slickdeals.net/newsearch.php?mode=frontpage&searcharea=deals&searchin=first&rss=1"
-
-# Add this BELOW your existing CHANNEL_ID (around line 7), this is used for the freebies posted elsewhere
-REDDIT_CHANNEL_ID = 112233445566778899  # Replace with your target channel ID
+# RSS Feeds
+SLICKDEALS_RSS = "https://www.slickdeals.net/newsearch.php?mode=frontpage&searcharea=deals&searchin=first&rss=1"
+REDDIT_RSS = "https://www.reddit.com/r/Freebies/new/.rss"
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
-posted_deals = set()  # Tracks posted deals to avoid duplicates
+posted_entries = set()  # Tracks all posted deals to avoid duplicates
 
-
-
-# ========= MESSAGE FORMATTING =========
-def format_deal(entry):
-    """Creates pretty Discord messages with images"""
-    embed = discord.Embed(
-        title=f"🛒 {entry.title[:200]}",  # Shortens long titles
-        url=entry.link,
-        color=0xFF6B00  # Orange color
-    )
-    
-    if img_url := extract_image_url(entry):  # Walrus operator (Python 3.8+)
-        embed.set_image(url=img_url)
-    
-    embed.set_footer(text="🔔 New Deal Alert")
-    return embed
-
-# ========= MAIN DEAL CHECKER =========
 @tasks.loop(minutes=30)
-async def check_deals():
+async def check_feeds():
     try:
-        # Original Slickdeals logic (unchanged)
-        slickdeals_channel = bot.get_channel(CHANNEL_ID)
-        slickdeals_feed = feedparser.parse(RSS_URL)
-        for entry in slickdeals_feed.entries[:5]:
-            if entry.link not in posted_deals:
-                await slickdeals_channel.send(embed=format_deal(entry))
-                posted_deals.add(entry.link)
-        
-        # New Reddit logic (separate channel)
+        # 1. Check Slickdeals (simple text format)
+        slickdeals_channel = bot.get_channel(SLICKDEALS_CHANNEL_ID)
+        slickdeals_feed = feedparser.parse(SLICKDEALS_RSS)
+        for entry in slickdeals_feed.entries[:5]:  # Only newest 5
+            if entry.link not in posted_entries:
+                await slickdeals_channel.send(f"🛒 **{entry.title}**\n{entry.link}")
+                posted_entries.add(f"slickdeals_{entry.link}")  # Prefix avoids ID conflicts
+
+        # 2. Check Reddit Freebies (with role ping)
         reddit_channel = bot.get_channel(REDDIT_CHANNEL_ID)
-        reddit_feed = feedparser.parse(REDDIT_RSS_URL)
+        reddit_feed = feedparser.parse(REDDIT_RSS)
         for entry in reddit_feed.entries[:5]:
-            if entry.link not in posted_deals:
-                message = f"<@&{ROLE_ID}> 🎁 **{entry.title}**\n{entry.link}"
-                await reddit_channel.send(message)  # Sent to different channel!
-                posted_deals.add(entry.link)
+            if entry.id not in posted_entries:
+                await reddit_channel.send(f"<@&{REDDIT_ROLE_ID}> 🎁 **{entry.title}**\n{entry.link}")
+                posted_entries.add(f"reddit_{entry.id}")  # Use Reddit's unique ID
                 
     except Exception as e:
         print(f"⚠️ Error: {e}")
 
-# ========= DISCORD COMMANDS =========
-@bot.command()
-async def test(ctx):
-    """Debug command"""
-    await ctx.send("⚠️ This command is disabled")  # Immediate response
-
 @bot.event
 async def on_ready():
-    keepalive.start()  # Fixed indentation
     print(f"🚀 Bot ready as {bot.user}")
-    check_deals.start()  # Start the 30-minute timer
+    check_feeds.start()
 
-# ========= KEEP-ALIVE SERVER =========
-@tasks.loop(minutes=4)
-async def keepalive():
-    try:
-        requests.get("https://couponbot1-1.onrender.com")
-    except:
-        pass
-
+# Keep-alive server (for Replit/Render)
 app = Flask('')
 @app.route('/')
 def home():
