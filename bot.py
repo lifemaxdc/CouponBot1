@@ -7,37 +7,22 @@ from flask import Flask
 from threading import Thread
 from waitress import serve
 
+
+REDDIT_RSS_URL = "https://www.reddit.com/r/Freebies/new/.rss"
+ROLE_ID = "1102467235190153248"  # Replace with the role ID to ping (e.g., "123456789")
+
 # Config - Don't change these
 TOKEN = os.environ['DISCORD_TOKEN']  # Get from Render secrets
 CHANNEL_ID = 1360707075818127471     # Your channel ID
 RSS_URL = "https://www.slickdeals.net/newsearch.php?mode=frontpage&searcharea=deals&searchin=first&rss=1"
 
+# Add this BELOW your existing CHANNEL_ID (around line 7), this is used for the freebies posted elsewhere
+REDDIT_CHANNEL_ID = 112233445566778899  # Replace with your target channel ID
+
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
 posted_deals = set()  # Tracks posted deals to avoid duplicates
 
-# ========= IMAGE EXTRACTION =========
-def extract_image_url(entry):
-    """Simplified image finder - checks 3 places for images"""
-    # 1. Check for direct image links (most reliable)
-    if hasattr(entry, 'links'):
-        for link in entry.links:
-            if link.rel == 'enclosure' and 'image' in link.type:
-                return link.href
-    
-    # 2. Check description HTML (common for Slickdeals)
-    if 'description' in entry:
-        if 'img src="' in entry.description:
-            start = entry.description.find('img src="') + 9
-            end = entry.description.find('"', start)
-            return entry.description[start:end]
-    
-    # 3. Check media attachments (fallback)
-    if hasattr(entry, 'media_content'):
-        for media in entry.media_content:
-            if 'image' in media.get('medium', ''):
-                return media['url']
-    
-    return None  # No image found
+
 
 # ========= MESSAGE FORMATTING =========
 def format_deal(entry):
@@ -58,19 +43,25 @@ def format_deal(entry):
 @tasks.loop(minutes=30)
 async def check_deals():
     try:
-        channel = bot.get_channel(CHANNEL_ID)
-        if not channel:
-            return  # Silently skip if channel is wrong
-            
-        feed = feedparser.parse(RSS_URL)
-        
-        for entry in feed.entries[:5]:  # Only check 5 newest deals
+        # Original Slickdeals logic (unchanged)
+        slickdeals_channel = bot.get_channel(CHANNEL_ID)
+        slickdeals_feed = feedparser.parse(RSS_URL)
+        for entry in slickdeals_feed.entries[:5]:
             if entry.link not in posted_deals:
-                await channel.send(embed=format_deal(entry))
+                await slickdeals_channel.send(embed=format_deal(entry))
+                posted_deals.add(entry.link)
+        
+        # New Reddit logic (separate channel)
+        reddit_channel = bot.get_channel(REDDIT_CHANNEL_ID)
+        reddit_feed = feedparser.parse(REDDIT_RSS_URL)
+        for entry in reddit_feed.entries[:5]:
+            if entry.link not in posted_deals:
+                message = f"<@&{ROLE_ID}> 🎁 **{entry.title}**\n{entry.link}"
+                await reddit_channel.send(message)  # Sent to different channel!
                 posted_deals.add(entry.link)
                 
     except Exception as e:
-        print(f"⚠️ Error (will retry): {e}")
+        print(f"⚠️ Error: {e}")
 
 # ========= DISCORD COMMANDS =========
 @bot.command()
